@@ -30,7 +30,7 @@ pipeline {
                 echo '📦 Analizando vulnerabilidades en dependencias...'
                 sh '''
                     npm audit --json > sca-report.json || true
-                    echo "=== REPORTE SCA (npm audit) ==="
+                    echo "=== REPORTE SCA ==="
                     cat sca-report.json
                 '''
             }
@@ -47,9 +47,8 @@ pipeline {
             steps {
                 echo '🔒 Analizando vulnerabilidades en el código fuente...'
                 sh '''
-                    pip install semgrep --quiet --break-system-packages
+                    pip install semgrep --quiet --break-system-packages || true
                     export PATH=$HOME/.local/bin:$PATH
-                    which semgrep || true
                     $HOME/.local/bin/semgrep --config=p/nodejs-security \
                             --json \
                             --output=semgrep-report.json \
@@ -95,42 +94,37 @@ pipeline {
                 sh '''
                     echo "=== SECURITY GATE ==="
                     echo "Criterios:"
-                    echo "  - Vulnerabilidades CRITICAL permitidas: ${MAX_CRITICAL}"
-                    echo "  - Vulnerabilidades HIGH permitidas:     ${MAX_HIGH}"
+                    echo "  - CRITICAL permitidas: ${MAX_CRITICAL}"
+                    echo "  - HIGH permitidas:     ${MAX_HIGH}"
 
-                    CRITICAL=$(cat trivy-report.json | python3 -c "
+                    CRITICAL=$(python3 -c "
 import json, sys
-data = json.load(sys.stdin)
-count = 0
-for result in data.get('Results', []):
-    for vuln in result.get('Vulnerabilities', []):
-        if vuln.get('Severity') == 'CRITICAL':
-            count += 1
-print(count)
+try:
+    data = json.load(open('trivy-report.json'))
+    count = sum(1 for r in data.get('Results',[]) for v in r.get('Vulnerabilities',[]) if v.get('Severity')=='CRITICAL')
+    print(count)
+except: print(0)
 " 2>/dev/null || echo "0")
 
-                    HIGH=$(cat trivy-report.json | python3 -c "
+                    HIGH=$(python3 -c "
 import json, sys
-data = json.load(sys.stdin)
-count = 0
-for result in data.get('Results', []):
-    for vuln in result.get('Vulnerabilities', []):
-        if vuln.get('Severity') == 'HIGH':
-            count += 1
-print(count)
+try:
+    data = json.load(open('trivy-report.json'))
+    count = sum(1 for r in data.get('Results',[]) for v in r.get('Vulnerabilities',[]) if v.get('Severity')=='HIGH')
+    print(count)
+except: print(0)
 " 2>/dev/null || echo "0")
 
-                    echo "Vulnerabilidades encontradas:"
-                    echo "  - CRITICAL: $CRITICAL (máximo: ${MAX_CRITICAL})"
-                    echo "  - HIGH:     $HIGH (máximo: ${MAX_HIGH})"
+                    echo "  - CRITICAL encontradas: $CRITICAL"
+                    echo "  - HIGH encontradas:     $HIGH"
 
                     if [ "$CRITICAL" -gt "${MAX_CRITICAL}" ]; then
-                        echo "❌ SECURITY GATE FALLÓ: $CRITICAL vulnerabilidades CRITICAL (máximo: ${MAX_CRITICAL})"
+                        echo "❌ SECURITY GATE FALLÓ: $CRITICAL CRITICAL (máximo: ${MAX_CRITICAL})"
                         exit 1
                     fi
 
                     if [ "$HIGH" -gt "${MAX_HIGH}" ]; then
-                        echo "❌ SECURITY GATE FALLÓ: $HIGH vulnerabilidades HIGH (máximo: ${MAX_HIGH})"
+                        echo "❌ SECURITY GATE FALLÓ: $HIGH HIGH (máximo: ${MAX_HIGH})"
                         exit 1
                     fi
 
@@ -167,7 +161,7 @@ print(count)
             echo '❌ Pipeline falló. Revisar el stage en rojo.'
         }
         always {
-            echo '📋 Archivando reportes de seguridad...'
+            echo '📋 Archivando reportes...'
             archiveArtifacts artifacts: 'semgrep-report.json, sca-report.json, trivy-report.json, zap-report.html, zap-report.json',
                              allowEmptyArchive: true
         }
