@@ -47,9 +47,10 @@ pipeline {
             steps {
                 echo '🔒 Analizando vulnerabilidades en el código fuente...'
                 sh '''
-                    export PATH=$PATH:/var/jenkins_home/.local/bin
                     pip install semgrep --quiet --break-system-packages
-                    semgrep --config=p/nodejs-security \
+                    export PATH=$HOME/.local/bin:$PATH
+                    which semgrep || true
+                    $HOME/.local/bin/semgrep --config=p/nodejs-security \
                             --json \
                             --output=semgrep-report.json \
                             src/ || true
