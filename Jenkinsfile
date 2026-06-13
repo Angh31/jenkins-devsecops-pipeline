@@ -4,7 +4,6 @@ pipeline {
     environment {
         APP_NAME = 'jenkins-todo-app'
         APP_PORT = '3001'
-        // Security Gate — umbrales máximos permitidos
         MAX_CRITICAL = '0'
         MAX_HIGH     = '3'
     }
@@ -48,13 +47,14 @@ pipeline {
             steps {
                 echo '🔒 Analizando vulnerabilidades en el código fuente...'
                 sh '''
+                    export PATH=$PATH:/var/jenkins_home/.local/bin
                     pip install semgrep --quiet --break-system-packages
                     semgrep --config=p/nodejs-security \
                             --json \
                             --output=semgrep-report.json \
                             src/ || true
                     echo "=== VULNERABILIDADES ENCONTRADAS ==="
-                    cat semgrep-report.json
+                    cat semgrep-report.json || echo "Sin reporte generado"
                 '''
             }
         }
@@ -83,7 +83,7 @@ pipeline {
                         --severity LOW,MEDIUM,HIGH,CRITICAL \
                         jenkins-todo-app:latest || true
                     echo "=== REPORTE TRIVY ==="
-                    cat trivy-report.json
+                    cat trivy-report.json || echo "Sin reporte generado"
                 '''
             }
         }
@@ -97,7 +97,6 @@ pipeline {
                     echo "  - Vulnerabilidades CRITICAL permitidas: ${MAX_CRITICAL}"
                     echo "  - Vulnerabilidades HIGH permitidas:     ${MAX_HIGH}"
 
-                    # Contar vulnerabilidades críticas en Trivy
                     CRITICAL=$(cat trivy-report.json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -125,12 +124,12 @@ print(count)
                     echo "  - HIGH:     $HIGH (máximo: ${MAX_HIGH})"
 
                     if [ "$CRITICAL" -gt "${MAX_CRITICAL}" ]; then
-                        echo "❌ SECURITY GATE FALLÓ: $CRITICAL vulnerabilidades CRITICAL encontradas (máximo: ${MAX_CRITICAL})"
+                        echo "❌ SECURITY GATE FALLÓ: $CRITICAL vulnerabilidades CRITICAL (máximo: ${MAX_CRITICAL})"
                         exit 1
                     fi
 
                     if [ "$HIGH" -gt "${MAX_HIGH}" ]; then
-                        echo "❌ SECURITY GATE FALLÓ: $HIGH vulnerabilidades HIGH encontradas (máximo: ${MAX_HIGH})"
+                        echo "❌ SECURITY GATE FALLÓ: $HIGH vulnerabilidades HIGH (máximo: ${MAX_HIGH})"
                         exit 1
                     fi
 
